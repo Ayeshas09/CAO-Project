@@ -2,90 +2,90 @@
 #include <Wire.h>
 #include "DHT.h"
 
-#define DHTTYPE DHT11 // DHT 11
-
+// using dht 11
+#define DHTTYPE DHT11
+// Defines pin number to which the sensor is connected
 uint8_t DHTPin = 4;
 
+unsigned long previousMillis = 0;
+unsigned long interval = 30000;
+
+// creates a dht object
 DHT dht(DHTPin, DHTTYPE);
 
 float Temperature;
-
 float Humidity;
 
 void send_event(const char *event);
 
 const char *ssid = "AndroidAPAA86";
-
 const char *password = "wiuw1034";
 
 const char *host = "maker.ifttt.com";
+// Enter the privte key that was copied from IFTTT Webhooks
+const char *privateKey = "cPj1CIZhXwOo302JQTTz02";
 
-const char *privateKey = "cPj1CIZhXwOo302JQTTz02"; // Enter the privte key that was copied from IFTTT Webhooks
-
+// 80 is the default port for HTTP
 WiFiServer server(80);
 
 String header;
 
-void setup()
+void initWiFi()
 {
-  Serial.begin(115200);
-
-  pinMode(DHTPin, INPUT);
-
-  dht.begin();
-
-  Serial.print("Connecting to Wifi Network");
-
-  Serial.println(ssid);
-
+  WiFi.mode(WIFI_STA);
+  // to connect to the network
   WiFi.begin(ssid, password);
-
+  Serial.print("Connecting to WiFi ..");
+  // to check if the connection was established or not
   while (WiFi.status() != WL_CONNECTED)
   {
-
-    delay(500);
-
-    Serial.print(".");
+    Serial.print('.');
+    delay(1000);
   }
+}
+
+void setup()
+{
+  // opens serial port, sets data rate to 115200 bps
+  Serial.begin(115200);
+  // configure DHTPin to behave either as an input
+  pinMode(DHTPin, INPUT);
+  // Initialize the DHT sensor
+  dht.begin();
+
+  initWiFi();
 
   Serial.println("");
 
   Serial.println("Successfully connected to WiFi.");
 
   Serial.println("IP address of ESP32 is : ");
-
+  // generates IP address
   Serial.println(WiFi.localIP());
 
+  Serial.print("RSSI: ");
+  Serial.println(WiFi.RSSI());
+  // tells the server to begin listening for incoming connections
   server.begin();
-
   Serial.println("Server started");
 }
 
 void loop()
-
 {
-
   Temperature = dht.readTemperature();
-
   Humidity = dht.readHumidity();
 
   WiFiClient client = server.available();
 
   if (client)
-
   {
-
     Serial.println("Web Client connected ");
-
     String request = client.readStringUntil('\r');
-
     client.println("HTTP/1.1 200 OK");
-
     client.println("Content-Type: text/html");
 
     client.println("Connection: close"); // the connection will be closed after completion of the response
-
-    client.println("Refresh: 10"); // update the page after 10 sec
+    client.println("Refresh: 10");       // update the page after 10 sec
 
     client.println();
 
@@ -159,22 +159,28 @@ void loop()
       send_event("temp_event");
     }
   }
+
+  unsigned long currentMillis = millis();
+  // if WiFi is down, try reconnecting every CHECK_WIFI_TIME seconds
+  if ((WiFi.status() != WL_CONNECTED) && (currentMillis - previousMillis >= interval))
+  {
+    Serial.print(millis());
+    Serial.println("Reconnecting to WiFi...");
+    WiFi.disconnect();
+    WiFi.reconnect();
+    previousMillis = currentMillis;
+  }
 }
 
 void send_event(const char *event)
-
 {
-
   Serial.print("Connecting to ");
-
   Serial.println(host);
 
   // Use WiFiClient class to create TCP connections
-
   WiFiClient client;
 
   const int httpPort = 80;
-
   if (!client.connect(host, httpPort))
   {
 
@@ -184,13 +190,9 @@ void send_event(const char *event)
   }
 
   // We now create a URI for the request
-
   String url = "/trigger/";
-
   url += event;
-
   url += "/with/key/";
-
   url += privateKey;
 
   Serial.print("Requesting URL: ");
@@ -206,22 +208,15 @@ void send_event(const char *event)
                "Connection: close\r\n\r\n");
 
   while (client.connected())
-
   {
-
     if (client.available())
-
     {
-
       String line = client.readStringUntil('\r');
-
       Serial.print(line);
     }
     else
     {
-
       // No data yet, wait a bit
-
       delay(50);
     };
   }
